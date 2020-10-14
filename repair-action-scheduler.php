@@ -89,13 +89,15 @@ class Repair_Action_Scheduler {
 
 	private function do_repair() {
 		if ( substr( get_option( 'schema-ActionScheduler_StoreSchema', '' ), 0, 1 ) > 3 ) {
-			$this->add_notice( __( 'The Repair Action Scheduler could not run because the embedded database schema is obsolete.', 'repair-action-scheduler' ) );
+			$this->add_notice( __( 'The Repair Action Scheduler could not run because the repair database schema is obsolete.', 'repair-action-scheduler' ) );
 			$this->save_data();
 			return;
 		}
 
 		$this->suffix = '_' . substr( md5( microtime() ), 0, 4 );
-		$this->add_notice( __( 'The Repair Action Scheduler process is complete. The following actions have been performed:', 'repair-action-scheduler' ) );
+		$this->add_notice( '<strong>' . __( 'The Repair Action Scheduler process is complete.', 'repair-action-scheduler' ) . '</strong>' . __( 'The following actions have been performed:', 'repair-action-scheduler' ) );
+
+		$this->maybe_deactivate_analytics_module();
 
 		$this->tables = array(
 			self::ACTIONS_TABLE => 'action_id',
@@ -171,6 +173,16 @@ class Repair_Action_Scheduler {
 		$wpdb->query( $this->get_table_schema( $table ) ); // phpcs:ignore
 		// Translators: placeholder is the table name wrapped in CODE tags.
 		$this->add_notice( sprintf( __( 'Created table: %s', 'repair-action-scheduler' ), '<code>' . $table . '</code>' ) );
+	}
+
+	private function maybe_deactivate_analytics_module() {
+		$modules = get_option( 'rank_math_modules' );
+		if ( ! is_array( $modules ) ) {
+			return;
+		}
+
+		$new_modules = array_values( array_diff( $modules, array( 'analytics', 'search-console' ) ) );
+		$this->add_notice( __( 'Deactivated the Analytics module in Rank Math.', 'repair-action-scheduler' ) );
 	}
 
 	private function rename_table( $table ) {
