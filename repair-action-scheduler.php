@@ -97,8 +97,6 @@ class Repair_Action_Scheduler {
 		$this->suffix = '_' . substr( md5( microtime() ), 0, 4 );
 		$this->add_notice( '<strong>' . __( 'The Repair Action Scheduler process is complete.', 'repair-action-scheduler' ) . '</strong>' . __( 'The following actions have been performed:', 'repair-action-scheduler' ) );
 
-		$this->maybe_deactivate_analytics_module();
-
 		$this->tables = array(
 			self::ACTIONS_TABLE => 'action_id',
 			self::CLAIMS_TABLE  => 'claim_id',
