@@ -9,9 +9,9 @@
  *
  * @wordpress-plugin
  * Plugin Name:       Repair Action Scheduler
- * Version:           1.0
+ * Version:           1.1
  * Plugin URI:        https://s.rankmath.com/home
- * Description:       Fix database errors related to the Action Scheduler library. The plugin checks and creates the tables necessary for Action Scheduler version 3.0.16. The faulty tables will be renamed and new ones will be created instead. This plugin runs once and does NOT need to stay activated on the site.
+ * Description:       Fix database errors related to the Action Scheduler library. The plugin checks and creates the tables necessary for Action Scheduler version 3.3.0. The faulty tables will be renamed and new ones will be created instead. This plugin runs once and does NOT need to stay activated on the site.
  * Author:            Rank Math
  * Author URI:        https://s.rankmath.com/home
  * License:           GPL-2.0+
@@ -38,7 +38,10 @@ class Repair_Action_Scheduler {
 	 * @var array
 	 */
 	private $tables = array();
-	
+
+	/**
+	 * Admin notices.
+	 */
 	private $notices = array();
 
 	/**
@@ -56,13 +59,18 @@ class Repair_Action_Scheduler {
 
 		$this->notices = get_option( 'ras_notices', array() );
 		add_action( 'admin_notices', array( $this, 'show_notices' ) );
-		
 	}
 
+	/**
+	 * Add admin notice.
+	 */
 	private function add_notice( $message ) {
 		$this->notices[] = $message;
 	}
 
+	/**
+	 * Show admin notices.
+	 */
 	public function show_notices() {
 		if ( empty( $this->notices ) ) {
 			return;
@@ -83,12 +91,18 @@ class Repair_Action_Scheduler {
 		deactivate_plugins( plugin_basename( __FILE__ ) );
 	}
 
+	/**
+	 * Save plugin data to DB.
+	 */
 	private function save_data() {
 		update_option( 'ras_notices', $this->notices );
 	}
 
+	/**
+	 * Run the repair process.
+	 */
 	private function do_repair() {
-		if ( substr( get_option( 'schema-ActionScheduler_StoreSchema', '' ), 0, 1 ) > 3 ) {
+		if ( substr( get_option( 'schema-ActionScheduler_StoreSchema', '' ), 0, 1 ) > 6 ) {
 			$this->add_notice( __( 'The Repair Action Scheduler could not run because the repair database schema is obsolete.', 'repair-action-scheduler' ) );
 			$this->save_data();
 			return;
@@ -126,6 +140,13 @@ class Repair_Action_Scheduler {
 		$this->save_data();
 	}
 
+	/**
+	 * Check if table has a primary key set.
+	 *
+	 * @param string $table Table name.
+	 *
+	 * @return bool
+	 */
 	private function has_primary_key( $table ) {
 		global $wpdb;
 		$table_name  = $wpdb->prefix . $table;
@@ -135,6 +156,13 @@ class Repair_Action_Scheduler {
 		return (bool) $has_primary;
 	}
 
+	/**
+	 * Check if table has the auto increment property set on a column.
+	 *
+	 * @param string $table Table name.
+	 *
+	 * @return bool
+	 */
 	private function has_auto_increment( $table ) {
 		global $wpdb;
 		$table_name  = $wpdb->prefix . $table;
@@ -144,10 +172,13 @@ class Repair_Action_Scheduler {
 		return (bool) $has_auto_increment;
 	}
 
+	/**
+	 * Rename schema options.
+	 */
 	private function rename_options() {
 		$options = array(
-			'schema-ActionScheduler_LoggerSchema' => '3',
-			'schema-ActionScheduler_StoreSchema' => '2'
+			'schema-ActionScheduler_LoggerSchema' => '6',
+			'schema-ActionScheduler_StoreSchema' => '3'
 		);
 		foreach ( $options as $option => $version ) {
 			if ( $stored = get_option( $option ) ) {
@@ -160,12 +191,22 @@ class Repair_Action_Scheduler {
 		}
 	}
 
+	/**
+	 * Check if a table exists.
+	 * 
+	 * @param string $table Table name.
+	 */
 	private function table_exists( $table ) {
 		global $wpdb;
 		$tables = $wpdb->query( "SHOW TABLES LIKE '{$wpdb->prefix}{$table}'" ); // phpcs:ignore
 		return (bool) $tables;
 	}
 
+	/**
+	 * Create a table.
+	 *
+	 * @param string $table Table name.
+	 */
 	private function create_table( $table ) {
 		global $wpdb;
 		$wpdb->query( $this->get_table_schema( $table ) ); // phpcs:ignore
@@ -173,6 +214,9 @@ class Repair_Action_Scheduler {
 		$this->add_notice( sprintf( __( 'Created table: %s', 'repair-action-scheduler' ), '<code>' . $table . '</code>' ) );
 	}
 
+	/**
+	 * Deactivate the Analytics module in Rank Math.
+	 */
 	private function maybe_deactivate_analytics_module() {
 		$modules = get_option( 'rank_math_modules' );
 		if ( ! is_array( $modules ) ) {
@@ -183,6 +227,11 @@ class Repair_Action_Scheduler {
 		$this->add_notice( __( 'Deactivated the Analytics module in Rank Math.', 'repair-action-scheduler' ) );
 	}
 
+	/**
+	 * Rename a table.
+	 *
+	 * @param string $table Table name.
+	 */
 	private function rename_table( $table ) {
 		global $wpdb;
 		$wpdb->query( "ALTER TABLE {$wpdb->prefix}{$table} RENAME TO {$wpdb->prefix}{$table}{$this->suffix};" ); // phpcs:ignore
@@ -190,11 +239,19 @@ class Repair_Action_Scheduler {
 		$this->add_notice( sprintf( __( 'Renamed table: %1$s to %2$s', 'repair-action-scheduler' ), '<code>' . $table . '</code>', '<code>' . $table . $this->suffix . '</code>' ) );
 	}
 
+	/**
+	 * Get table schema.
+	 *
+	 * @param string $table Table name.
+	 *
+	 * @return string
+	 */
 	private function get_table_schema( $table ) {
 		global $wpdb;
 		$table_name       = $wpdb->prefix . $table;
 		$charset_collate  = $wpdb->get_charset_collate();
 		$max_index_length = 191; // @see wp_get_db_schema()
+		$default_date     = '0000-00-00 00:00:00';
 		switch ( $table ) {
 
 			case self::ACTIONS_TABLE:
@@ -202,14 +259,14 @@ class Repair_Action_Scheduler {
 					action_id bigint(20) unsigned NOT NULL auto_increment,
 					hook varchar(191) NOT NULL,
 					status varchar(20) NOT NULL,
-					scheduled_date_gmt datetime NOT NULL default '0000-00-00 00:00:00',
-					scheduled_date_local datetime NOT NULL default '0000-00-00 00:00:00',
+					scheduled_date_gmt datetime NULL default '${default_date}',
+					scheduled_date_local datetime NULL default '${default_date}',
 					args varchar($max_index_length),
 					schedule longtext,
 					group_id bigint(20) unsigned NOT NULL default '0',
 					attempts int(11) NOT NULL default '0',
-					last_attempt_gmt datetime NOT NULL default '0000-00-00 00:00:00',
-					last_attempt_local datetime NOT NULL default '0000-00-00 00:00:00',
+					last_attempt_gmt datetime NULL default '${default_date}',
+					last_attempt_local datetime NULL default '${default_date}',
 					claim_id bigint(20) unsigned NOT NULL default '0',
 					extended_args varchar(8000) DEFAULT NULL,
 					PRIMARY KEY  (action_id),
@@ -219,13 +276,13 @@ class Repair_Action_Scheduler {
 					KEY args (args($max_index_length)),
 					KEY group_id (group_id),
 					KEY last_attempt_gmt (last_attempt_gmt),
-					KEY claim_id (claim_id)
+					KEY `claim_id_status_scheduled_date_gmt` (`claim_id`, `status`, `scheduled_date_gmt`)
 					) $charset_collate";
 
 			case self::CLAIMS_TABLE:
 				return "CREATE TABLE {$table_name} (
 						claim_id bigint(20) unsigned NOT NULL auto_increment,
-						date_created_gmt datetime NOT NULL default '0000-00-00 00:00:00',
+						date_created_gmt datetime NULL default '${default_date}',
 						PRIMARY KEY  (claim_id),
 						KEY date_created_gmt (date_created_gmt)
 						) $charset_collate";
@@ -243,8 +300,8 @@ class Repair_Action_Scheduler {
 						log_id bigint(20) unsigned NOT NULL auto_increment,
 						action_id bigint(20) unsigned NOT NULL,
 						message text NOT NULL,
-						log_date_gmt datetime NOT NULL default '0000-00-00 00:00:00',
-						log_date_local datetime NOT NULL default '0000-00-00 00:00:00',
+						log_date_gmt datetime NULL default '${default_date}',
+						log_date_local datetime NULL default '${default_date}',
 						PRIMARY KEY  (log_id),
 						KEY action_id (action_id),
 						KEY log_date_gmt (log_date_gmt)
@@ -256,9 +313,15 @@ class Repair_Action_Scheduler {
 	}
 }
 
-register_deactivation_hook( __FILE__, 'repair_action_scheduler_clean' );
+/**
+ * Cleanup the database after the plugin is deactivated.
+ */
 function repair_action_scheduler_clean() {
 	delete_option( 'ras_notices' );
 }
+register_deactivation_hook( __FILE__, 'repair_action_scheduler_clean' );
 
+/**
+ * Initialize the plugin.
+ */
 $repair_action_scheduler = new Repair_Action_Scheduler();
